@@ -178,10 +178,10 @@ def main():
     dt_gid     = map_downtime(downtime)
     dev_gid    = map_dev(dev)
 
-    if scale_gid:  custom_fields[CF_SCALE]           = {"gid": scale_gid}
-    if action_gid: custom_fields[CF_CUSTOMER_ACTION] = {"gid": action_gid}
-    if dt_gid:     custom_fields[CF_DOWNTIME]        = {"gid": dt_gid}
-    if dev_gid:    custom_fields[CF_DEVELOPMENT]     = {"gid": dev_gid}
+    if scale_gid:  custom_fields[CF_SCALE]           = scale_gid
+    if action_gid: custom_fields[CF_CUSTOMER_ACTION] = action_gid
+    if dt_gid:     custom_fields[CF_DOWNTIME]        = dt_gid
+    if dev_gid:    custom_fields[CF_DEVELOPMENT]     = dev_gid
 
     payload = {
         "data": {

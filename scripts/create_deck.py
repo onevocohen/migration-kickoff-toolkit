@@ -141,6 +141,9 @@ def main():
 
     reqs = []
 
+    # ── Global: replace CyberArk with Idira throughout the deck ────────────────
+    reqs.append(replace_text("CyberArk", "Idira"))
+
     # ── Slide 1: Cover ──────────────────────────────────────────────────────────
     # Replace "XXX Migration" with actual migration name
     reqs.append(replace_text("XXX Migration", f"{migration_name} Migration"))

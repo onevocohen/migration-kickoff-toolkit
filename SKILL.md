@@ -96,9 +96,11 @@ Ask the PM **one question at a time**, conversationally. Wait for each answer be
 | `key_dates` | Key milestone dates — ask: "When do you want to complete the migration?" |
 | `field_guidance` | What sales/CS/support should do, what's expected from the field |
 | `escalation` | Auto-fill: always the submitting PM (`pm_name` + `contact`) — never ask |
+| `who_notified` | Auto-fill: always leave blank / TBD — never ask |
 | `alternatives` | What alternatives exist (if any) for customers who can't migrate |
 | `pricing_impact` | Any pricing changes as part of migration |
 | `communication` | Channels and timing for customer comms |
+| `slack_additional_members` | Ask: *"Anyone else to add to the Slack channel?"* — accept a list of emails; leave as `[]` if none |
 | `who_notified` | Which customer segments receive notice |
 | `contact` | PM name + email |
 | `pm_name` | Submitting PM's name |
@@ -134,7 +136,8 @@ cat > /tmp/migration_input.json << 'ENDJSON'
   "who_notified": "...",
   "migration_scale": "...",
   "dev_status": "...",
-  "status_notes": "..."
+  "status_notes": "...",
+  "slack_additional_members": []
 }
 ENDJSON
 ```
@@ -171,7 +174,17 @@ Creates a **30-minute Google Meet** event titled `"Migration Kickoff - <migratio
 
 ---
 
-### Step 6 — Share all outputs
+### Step 6 — Create the Slack channel
+
+```bash
+python3 "/Users/onevocohen/Library/Application Support/Cursor/AgentStores/cursor_agent_stores/7e93e542-cc75-4818-830f-089df36e7650/files/skills/migration-kickoff-toolkit/scripts/create_slack_channel.py" /tmp/migration_input.json "<asana_url>" "<deck_url>"
+```
+
+Creates a **private** Slack channel named `#migration-<normalized-name>`, invites the PM + Orit + Yael + anyone in `slack_additional_members`, and posts an intro message with the deck and Asana links.
+
+---
+
+### Step 7 — Share all outputs
 
 > ✅ Done! Here's your Migration Kickoff package:
 >
@@ -182,6 +195,8 @@ Creates a **30-minute Google Meet** event titled `"Migration Kickoff - <migratio
 >
 > 📅 **Kickoff meeting**: [calendar event link] · 🎥 [Google Meet link]
 > *(30 min · Orit & Yael invited · deck + Asana links in the invite)*
+>
+> 💬 **Slack channel**: [#channel-name] *(private · PM, Orit & Yael invited)*
 
 ---
 
