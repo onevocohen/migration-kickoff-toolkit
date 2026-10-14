@@ -11,12 +11,33 @@ The PM only needs to say they're planning a migration — the skill takes care o
 
 ## Scripts
 
+All scripts live in the `scripts/` directory **next to this SKILL.md file**.
+Before running any script, resolve `SKILL_DIR` to the directory containing this file — then use `$SKILL_DIR/scripts/<script>.py` in every run command below.
+
 ```
-/Users/onevocohen/Library/Application Support/Cursor/AgentStores/cursor_agent_stores/7e93e542-cc75-4818-830f-089df36e7650/files/skills/migration-kickoff-toolkit/scripts/fetch_asana.py
-/Users/onevocohen/Library/Application Support/Cursor/AgentStores/cursor_agent_stores/7e93e542-cc75-4818-830f-089df36e7650/files/skills/migration-kickoff-toolkit/scripts/submit_asana.py
-/Users/onevocohen/Library/Application Support/Cursor/AgentStores/cursor_agent_stores/7e93e542-cc75-4818-830f-089df36e7650/files/skills/migration-kickoff-toolkit/scripts/create_deck.py
-/Users/onevocohen/Library/Application Support/Cursor/AgentStores/cursor_agent_stores/7e93e542-cc75-4818-830f-089df36e7650/files/skills/migration-kickoff-toolkit/scripts/create_calendar.py
+scripts/fetch_asana.py
+scripts/submit_asana.py
+scripts/create_deck.py
+scripts/create_calendar.py
+scripts/create_slack_channel.py
 ```
+
+---
+
+## Required environment variables
+
+The scripts read credentials and config **only** from environment variables. Set these before running any script (no hardcoded secrets, no local credential files):
+
+| Variable | Used by | Description |
+|---|---|---|
+| `ASANA_ACCESS_TOKEN` | fetch_asana, submit_asana | Personal access token from Asana developer settings |
+| `SLACK_USER_TOKEN` | create_slack_channel | User token (`xoxp-…`); preferred over bot token |
+| `SLACK_BOT_TOKEN` | create_slack_channel | Bot token (`xoxb-…`); fallback if user token not set |
+| `GOOGLE_ACCESS_TOKEN` | create_deck, create_calendar | Short-lived OAuth token — refresh with `gcloud auth application-default print-access-token` or equivalent |
+| `GOOGLE_CLOUD_PROJECT` | create_deck, create_calendar | GCP project ID for billing/quota (optional — omit if not needed) |
+| `SLIDES_TEMPLATE_ID` | create_deck | Google Slides file ID of the migration deck template |
+
+If a required variable is missing the script exits immediately with a clear error message.
 
 ## Asana Migration Request Form
 
@@ -45,7 +66,12 @@ Fields Asana **never** fills: `rationale`, `technical_details` (full), `release_
 ## Workflow
 
 ```
-PM mentions migration → search Asana → found? use it : ask questions → save to Asana (if new) → create deck → create meeting → share all links
+PM mentions migration
+  → search Asana
+      ↓ exit 0 (task exists): load all Asana data → ask only deck-only gaps → SKIP Step 3
+      ↓ exit 2 (not found):   ask all questions   → Step 3 submits new task
+      ↓ exit 3 (many matches): ask PM to pick one → re-run fetch with chosen GID
+  → create deck → create meeting → share all links
 ```
 
 ---
@@ -57,14 +83,16 @@ Ask the PM: **"What is the migration name or the product/feature being migrated?
 Then immediately search Asana:
 
 ```bash
-python3 "/Users/onevocohen/Library/Application Support/Cursor/AgentStores/cursor_agent_stores/7e93e542-cc75-4818-830f-089df36e7650/files/skills/migration-kickoff-toolkit/scripts/fetch_asana.py" "<migration name>"
+python3 "$SKILL_DIR/scripts/fetch_asana.py" "<migration name>"
 ```
 
 | Exit code | Meaning | Action |
 |---|---|---|
-| `0` | Existing task found — partial JSON ready | Pre-fill fields, go to Step 1 for gaps |
-| `2` | No task found | Ask PM all missing questions, go to Step 1 |
-| `3` | Multiple matches | Ask PM to clarify; re-run with chosen GID |
+| `0` | **Task already exists** | Load ALL Asana fields into JSON; only ask PM for deck-only fields not stored in Asana (Track A below); **do NOT re-submit — hard-skip Step 3** |
+| `2` | No task found | Ask PM every question in the table (Track B below); proceed to Step 3 to create a new Asana task |
+| `3` | Multiple matches | Ask PM to pick one; re-run `fetch_asana.py` with the chosen GID, then treat as exit 0 or 2 |
+
+> **Rule:** never call `submit_asana.py` when `fetch_asana.py` already returned a task. One migration = one Asana task.
 
 **`_asana_*` hints:**
 - `_asana_scale`: `"500+"` / `"100-500"` / `"<100"` — customer scale context
@@ -80,9 +108,38 @@ python3 "/Users/onevocohen/Library/Application Support/Cursor/AgentStores/cursor
 
 Ask the PM **one question at a time**, conversationally. Wait for each answer before asking the next.
 
+#### Track A — Asana task found (exit code 0)
+
+All Asana-stored fields (`migration_name`, `announcement`, `customer_analysis`, `customer_impact`, `downtime`, `field_guidance`, `technical_details`, `initiative`, `eol_npi_nfi`, `dev_status`, `migration_scale`, `pm_name`, `contact`) are already loaded from the existing task — **do not re-ask them**.
+
+Only ask for the fields Asana never stores (deck-only):
+
+| Field | What to ask |
+|---|---|
+| `background` | "Can you give me some background — what existed before this migration?" |
+| `today_status` | "What's the current status today?" |
+| `whats_next` | "What happens after the migration completes?" |
+| `rationale` | "What's the business rationale for this migration?" |
+| `release_strategy` | "Who gets migrated first, and in what order/segments?" |
+| `key_dates` | "When do you want to complete the migration? Any other key dates?" |
+| `alternatives` | "Are there any alternatives for customers who can't migrate?" |
+| `pricing_impact` | "Any pricing changes as part of this migration?" |
+| `communication` | "What's the communication plan — channels and timing?" |
+| `slack_additional_members` | "Anyone else to add to the Slack channel?" (accept email list; `[]` if none) |
+
+Then skip to Step 2 (build JSON), and **skip Step 3 entirely**.
+
+---
+
+#### Track B — No Asana task found (exit code 2)
+
+Ask every field below, one at a time:
+
 | Field | What to look for |
 |---|---|
 | `migration_name` | Exact name of the migration |
+| `pm_name` | Submitting PM's name |
+| `contact` | PM's email address |
 | `announcement` | What is being migrated and why — 2-3 sentences |
 | `background` | Context: what existed before, why migration is needed |
 | `today_status` | What is the current status today |
@@ -93,17 +150,16 @@ Ask the PM **one question at a time**, conversationally. Wait for each answer be
 | `customer_analysis` | Who are the affected customers, how many, what segments |
 | `customer_impact` | What changes for customers, what actions they need to take |
 | `downtime` | Expected downtime (if any) |
+| `migration_scale` | Number of affected customers (`<100` / `100-500` / `500+`) |
+| `dev_status` | Development completion status |
 | `key_dates` | Key milestone dates — ask: "When do you want to complete the migration?" |
 | `field_guidance` | What sales/CS/support should do, what's expected from the field |
-| `escalation` | Auto-fill: always the submitting PM (`pm_name` + `contact`) — never ask |
-| `who_notified` | Auto-fill: always leave blank / TBD — never ask |
 | `alternatives` | What alternatives exist (if any) for customers who can't migrate |
 | `pricing_impact` | Any pricing changes as part of migration |
 | `communication` | Channels and timing for customer comms |
 | `slack_additional_members` | Ask: *"Anyone else to add to the Slack channel?"* — accept a list of emails; leave as `[]` if none |
-| `who_notified` | Which customer segments receive notice |
-| `contact` | PM name + email |
-| `pm_name` | Submitting PM's name |
+| `escalation` | Auto-fill: always the submitting PM (`pm_name` + `contact`) — never ask |
+| `who_notified` | Auto-fill: always leave blank / TBD — never ask |
 
 **Do not leave any field blank — ask the PM for missing info before running the script.**
 
@@ -144,20 +200,27 @@ ENDJSON
 
 ---
 
-### Step 3 — Save to Asana (only if no existing task found in Step 0)
+### Step 3 — Submit to Asana (new requests only)
+
+> ⛔ **DECISION GATE — check this before running anything:**
+>
+> | `fetch_asana.py` result | Action |
+> |---|---|
+> | **Exit 0 — task already exists** | **SKIP this entire step.** Use the `_asana_task_url` from the fetched JSON as the Asana link in Steps 5–7. Never create a duplicate. |
+> | **Exit 2 — no existing task** | Run `submit_asana.py` below and use the printed URL as the Asana link. |
 
 ```bash
-python3 "/Users/onevocohen/Library/Application Support/Cursor/AgentStores/cursor_agent_stores/7e93e542-cc75-4818-830f-089df36e7650/files/skills/migration-kickoff-toolkit/scripts/submit_asana.py" /tmp/migration_input.json
+python3 "$SKILL_DIR/scripts/submit_asana.py" /tmp/migration_input.json
 ```
 
-Prints the new Asana task URL. If Step 0 found an existing task, **skip this step**.
+Prints the new Asana task URL.
 
 ---
 
 ### Step 4 — Create the deck
 
 ```bash
-python3 "/Users/onevocohen/Library/Application Support/Cursor/AgentStores/cursor_agent_stores/7e93e542-cc75-4818-830f-089df36e7650/files/skills/migration-kickoff-toolkit/scripts/create_deck.py" /tmp/migration_input.json
+python3 "$SKILL_DIR/scripts/create_deck.py" /tmp/migration_input.json
 ```
 
 Copies the Idira Migration Kickoff template, populates all slides, prints the Google Slides URL.
@@ -167,20 +230,20 @@ Copies the Idira Migration Kickoff template, populates all slides, prints the Go
 ### Step 5 — Create the calendar invite
 
 ```bash
-python3 "/Users/onevocohen/Library/Application Support/Cursor/AgentStores/cursor_agent_stores/7e93e542-cc75-4818-830f-089df36e7650/files/skills/migration-kickoff-toolkit/scripts/create_calendar.py" /tmp/migration_input.json "<deck_url>" "<asana_url>"
+python3 "$SKILL_DIR/scripts/create_calendar.py" /tmp/migration_input.json "<deck_url>" "<asana_url>"
 ```
 
-Creates a **30-minute Google Meet** event titled `"Migration Kickoff - <migration name>"`, invites the PM + Orit Nevo Cohen (`onevocohen@paloaltonetworks.com`) + Yael Gershon (`ygershongob@paloaltonetworks.com`).
+Creates a **30-minute Google Meet** event titled `"Migration Kickoff - <migration name>"`, invites the PM + the fixed attendees configured in `create_calendar.py`.
 
 ---
 
 ### Step 6 — Create the Slack channel
 
 ```bash
-python3 "/Users/onevocohen/Library/Application Support/Cursor/AgentStores/cursor_agent_stores/7e93e542-cc75-4818-830f-089df36e7650/files/skills/migration-kickoff-toolkit/scripts/create_slack_channel.py" /tmp/migration_input.json "<asana_url>" "<deck_url>"
+python3 "$SKILL_DIR/scripts/create_slack_channel.py" /tmp/migration_input.json "<asana_url>" "<deck_url>"
 ```
 
-Creates a **private** Slack channel named `#migration-<normalized-name>`, invites the PM + Orit + Yael + anyone in `slack_additional_members`, and posts an intro message with the deck and Asana links.
+Creates a **private** Slack channel named `#migration-<normalized-name>`, invites the PM + the fixed members configured in `create_slack_channel.py` + anyone in `slack_additional_members`, and posts an intro message with the deck and Asana links.
 
 ---
 
@@ -188,8 +251,8 @@ Creates a **private** Slack channel named `#migration-<normalized-name>`, invite
 
 > ✅ Done! Here's your Migration Kickoff package:
 >
-> 📋 **Asana task**: [link] *(new — created from your answers)*
->    OR: 📋 **Asana task**: [link] *(existing submission used)*
+> 📋 **Asana task**: [link] *(existing submission — all info pulled from Asana)*
+>    OR: 📋 **Asana task**: [link] *(new — just submitted from your answers)*
 >
 > 📊 **Migration deck**: [link]
 >
@@ -223,6 +286,8 @@ Creates a **private** Slack channel named `#migration-<normalized-name>`, invite
 
 | Error | Fix |
 |---|---|
-| `403 on copy_template` | PM needs at least View access to the template |
-| `ADC file not found` | Run: `gcloud auth application-default login` |
-| `401 Unauthorized` | ADC token expired — re-run login |
+| `403 on copy_template` | User needs at least View access to the Slides template (check `SLIDES_TEMPLATE_ID`) |
+| `Can't connect to Asana` | `ASANA_ACCESS_TOKEN` env var is missing or empty |
+| `Can't connect to Slack` | `SLACK_USER_TOKEN` or `SLACK_BOT_TOKEN` env var is missing or has wrong prefix |
+| `Can't connect to Google` | `GOOGLE_ACCESS_TOKEN` env var is missing — refresh it and re-export |
+| `401 Unauthorized` on Google | Token expired — re-run `gcloud auth application-default print-access-token` and re-export |

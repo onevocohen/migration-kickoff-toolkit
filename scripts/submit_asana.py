@@ -9,7 +9,7 @@ Usage:
 Prints the new Asana task URL on success.
 """
 
-import sys, json, urllib.request, urllib.parse, subprocess
+import sys, json, os, urllib.request, urllib.parse
 
 MIGRATIONS_PROJECT_GID = "1215528144935482"
 API_BASE = "https://app.asana.com/api/1.0"
@@ -52,11 +52,9 @@ DEV_GIDS = {
 }
 
 def get_token():
-    r = subprocess.run("bash ~/.config/secrets/get-secret.sh ASANA_ACCESS_TOKEN",
-                       shell=True, capture_output=True, text=True)
-    t = r.stdout.strip()
+    t = os.environ.get("ASANA_ACCESS_TOKEN", "").strip()
     if not t:
-        print("ERROR: Could not load ASANA_ACCESS_TOKEN", file=sys.stderr)
+        print("ERROR: Can't connect to Asana — ASANA_ACCESS_TOKEN environment variable is not set.", file=sys.stderr)
         sys.exit(1)
     return t
 

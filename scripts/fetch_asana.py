@@ -16,17 +16,14 @@ Exit codes:
 import sys, json, os, re, urllib.request, urllib.error
 
 MIGRATIONS_PROJECT_GID = "1215528144935482"
-TOKEN_CMD = "bash ~/.config/secrets/get-secret.sh ASANA_ACCESS_TOKEN"
 API_BASE  = "https://app.asana.com/api/1.0"
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
 def get_token():
-    import subprocess
-    r = subprocess.run(TOKEN_CMD, shell=True, capture_output=True, text=True)
-    t = r.stdout.strip()
+    t = os.environ.get("ASANA_ACCESS_TOKEN", "").strip()
     if not t:
-        print("ERROR: Could not load ASANA_ACCESS_TOKEN", file=sys.stderr)
+        print("ERROR: Can't connect to Asana — ASANA_ACCESS_TOKEN environment variable is not set.", file=sys.stderr)
         sys.exit(1)
     return t
 

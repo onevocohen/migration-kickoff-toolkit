@@ -9,7 +9,7 @@ Usage:
 Outputs JSON with channel_id, channel_name, channel_url.
 """
 
-import json, sys, subprocess, urllib.request, urllib.parse, re
+import json, sys, os, urllib.request, urllib.parse, re
 
 FIXED_MEMBERS = [
     "onevocohen@paloaltonetworks.com",   # Orit
@@ -21,12 +21,10 @@ SLACK_API = "https://slack.com/api"
 def get_token():
     """Try user token first (default), fall back to bot token. Validates prefix."""
     for key, prefix in (("SLACK_USER_TOKEN", "xoxp-"), ("SLACK_BOT_TOKEN", "xoxb-")):
-        r = subprocess.run(f"bash ~/.config/secrets/get-secret.sh {key}",
-                           shell=True, capture_output=True, text=True)
-        token = r.stdout.strip()
+        token = os.environ.get(key, "").strip()
         if token and token.startswith(prefix):
             return token
-    print("ERROR: No valid Slack token found (SLACK_USER_TOKEN or SLACK_BOT_TOKEN)", file=sys.stderr)
+    print("ERROR: Can't connect to Slack — set SLACK_USER_TOKEN (xoxp-...) or SLACK_BOT_TOKEN (xoxb-...) environment variable.", file=sys.stderr)
     sys.exit(1)
 
 

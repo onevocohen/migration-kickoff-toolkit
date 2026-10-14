@@ -13,7 +13,8 @@ Prints the Google Slides URL on success.
 import sys, json, os, urllib.request, urllib.parse
 from datetime import datetime
 
-TEMPLATE_ID = "17GZ2PGGDzG_fmC8LiWsOEHWTAeLQ7i6KpZKMrUioQl4"
+# Set SLIDES_TEMPLATE_ID in the environment to point to your Google Slides template.
+TEMPLATE_ID = os.environ.get("SLIDES_TEMPLATE_ID", "").strip()
 
 # Slide 2 element IDs (two "xxxx" fields need separate targeting)
 SLIDE2_BACKGROUND_ELEM = "p2_i532"   # first "xxxx" = background context
@@ -21,35 +22,28 @@ SLIDE2_TODAY_ELEM      = "p2_i534"   # "xxx" = today's status
 SLIDE2_NEXT_ELEM       = "p2_i536"   # second "xxxx" = what's next
 SLIDE2_STATUS_ELEM     = "p2_i538"   # "Status & updates"
 
-def get_token():
-    import subprocess
-    r = subprocess.run(
-        "bash ~/.config/secrets/get-secret.sh ASANA_ACCESS_TOKEN",
-        shell=True, capture_output=True, text=True
-    )
-    # Not used for Google — we use ADC
-    pass
-
-def refresh_google_token():
-    adc_path = os.path.expanduser("~/.config/gcloud/application_default_credentials.json")
-    with open(adc_path) as f:
-        creds = json.load(f)
-    data = urllib.parse.urlencode({
-        "client_id":     creds["client_id"],
-        "client_secret": creds["client_secret"],
-        "refresh_token": creds["refresh_token"],
-        "grant_type":    "refresh_token",
-    }).encode()
-    req = urllib.request.Request("https://oauth2.googleapis.com/token", data=data, method="POST")
-    with urllib.request.urlopen(req) as resp:
-        return json.loads(resp.read())["access_token"]
+def get_google_token():
+    """Read a Google OAuth access token from the environment.
+    Set GOOGLE_ACCESS_TOKEN before running this script.
+    For gcloud users: export GOOGLE_ACCESS_TOKEN=$(gcloud auth application-default print-access-token)
+    """
+    t = os.environ.get("GOOGLE_ACCESS_TOKEN", "").strip()
+    if not t:
+        print("ERROR: Can't connect to Google — GOOGLE_ACCESS_TOKEN environment variable is not set.", file=sys.stderr)
+        sys.exit(1)
+    return t
 
 def copy_template(token):
+    if not TEMPLATE_ID:
+        print("ERROR: SLIDES_TEMPLATE_ID environment variable is not set.", file=sys.stderr)
+        sys.exit(1)
+    gcp_project = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
     headers = {
         "Authorization":     f"Bearer {token}",
-        "X-Goog-User-Project": "pntops",
         "Content-Type":      "application/json",
     }
+    if gcp_project:
+        headers["X-Goog-User-Project"] = gcp_project
     body = json.dumps({"name": "Migration Kickoff Template Copy"}).encode()
     req = urllib.request.Request(
         f"https://www.googleapis.com/drive/v3/files/{TEMPLATE_ID}/copy?supportsAllDrives=true",
@@ -63,11 +57,13 @@ def copy_template(token):
         sys.exit(1)
 
 def batch_update(pres_id, requests, token):
+    gcp_project = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
     headers = {
         "Authorization":     f"Bearer {token}",
-        "X-Goog-User-Project": "pntops",
         "Content-Type":      "application/json",
     }
+    if gcp_project:
+        headers["X-Goog-User-Project"] = gcp_project
     body = json.dumps({"requests": requests}).encode()
     req = urllib.request.Request(
         f"https://slides.googleapis.com/v1/presentations/{pres_id}:batchUpdate",
@@ -117,7 +113,7 @@ def main():
     with open(sys.argv[1]) as f:
         d = json.load(f)
 
-    token = refresh_google_token()
+    token = get_google_token()
 
     # Use provided presentation ID or copy template
     if len(sys.argv) >= 3:
@@ -140,9 +136,6 @@ def main():
         key_dates_str = key_dates or ""
 
     reqs = []
-
-    # ── Global: replace CyberArk with Idira throughout the deck ────────────────
-    reqs.append(replace_text("CyberArk", "Idira"))
 
     # ── Slide 1: Cover ──────────────────────────────────────────────────────────
     # Replace "XXX Migration" with actual migration name

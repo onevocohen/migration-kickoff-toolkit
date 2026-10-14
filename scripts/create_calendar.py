@@ -28,26 +28,25 @@ def next_il_working_slot(from_dt=None):
         candidate += timedelta(days=1)
     return candidate
 
-def refresh_token():
-    adc_path = os.path.expanduser("~/.config/gcloud/application_default_credentials.json")
-    with open(adc_path) as f:
-        creds = json.load(f)
-    data = urllib.parse.urlencode({
-        "client_id":     creds["client_id"],
-        "client_secret": creds["client_secret"],
-        "refresh_token": creds["refresh_token"],
-        "grant_type":    "refresh_token",
-    }).encode()
-    req = urllib.request.Request("https://oauth2.googleapis.com/token", data=data, method="POST")
-    with urllib.request.urlopen(req) as resp:
-        return json.loads(resp.read())["access_token"]
+def get_google_token():
+    """Read a Google OAuth access token from the environment.
+    Set GOOGLE_ACCESS_TOKEN before running this script.
+    For gcloud users: export GOOGLE_ACCESS_TOKEN=$(gcloud auth application-default print-access-token)
+    """
+    t = os.environ.get("GOOGLE_ACCESS_TOKEN", "").strip()
+    if not t:
+        print("ERROR: Can't connect to Google Calendar — GOOGLE_ACCESS_TOKEN environment variable is not set.", file=sys.stderr)
+        sys.exit(1)
+    return t
 
 def freebusy_query(token, attendees, time_min, time_max):
+    gcp_project = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
     headers = {
         "Authorization":       f"Bearer {token}",
-        "X-Goog-User-Project": "pntops",
         "Content-Type":        "application/json",
     }
+    if gcp_project:
+        headers["X-Goog-User-Project"] = gcp_project
     body = json.dumps({
         "timeMin": time_min.isoformat(),
         "timeMax": time_max.isoformat(),
@@ -102,7 +101,7 @@ def main():
     migration = d.get("migration_name", "Migration")
     pm_email  = d.get("contact", "")
 
-    token = refresh_token()
+    token = get_google_token()
 
     if len(sys.argv) >= 5:
         start = datetime.fromisoformat(sys.argv[4])
@@ -126,11 +125,13 @@ def main():
     if pm_email:
         attendee_emails.add(pm_email)
 
+    gcp_project = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
     headers = {
         "Authorization":       f"Bearer {token}",
-        "X-Goog-User-Project": "pntops",
         "Content-Type":        "application/json",
     }
+    if gcp_project:
+        headers["X-Goog-User-Project"] = gcp_project
     event = {
         "summary": f"Migration Kickoff - {migration}",
         "description": (

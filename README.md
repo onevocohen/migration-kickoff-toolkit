@@ -165,44 +165,33 @@ cd migration-kickoff-toolkit
 
 ---
 
-### 2 — Set up your Asana token
+### 2 — Set your environment variables
 
-The scripts read your Asana token via a helper script at `~/.config/secrets/get-secret.sh`. Create the helper if it doesn't exist:
+The scripts read all credentials from environment variables — no helper scripts or credential files needed.
+
+Add these to your shell profile (`~/.zshrc`, `~/.bashrc`, etc.) or set them in your secrets manager:
 
 ```bash
-mkdir -p ~/.config/secrets
+# Asana — get your token at app.asana.com/0/developer-console
+export ASANA_ACCESS_TOKEN="your_asana_token_here"
 
-# Store your token
-echo 'ASANA_ACCESS_TOKEN=your_token_here' >> ~/.config/secrets/tokens.env
+# Slack — use a User token (xoxp-) or Bot token (xoxb-)
+export SLACK_USER_TOKEN="xoxp-your-user-token-here"
+# export SLACK_BOT_TOKEN="xoxb-your-bot-token-here"   # fallback if no user token
 
-# Create the get-secret helper
-cat > ~/.config/secrets/get-secret.sh << 'EOF'
-#!/bin/bash
-# Usage: get-secret.sh KEY
-grep "^$1=" "$HOME/.config/secrets/tokens.env" | cut -d= -f2-
-EOF
-chmod +x ~/.config/secrets/get-secret.sh
+# Google — generate a short-lived token with gcloud or your preferred method
+export GOOGLE_ACCESS_TOKEN="$(gcloud auth application-default print-access-token)"
+export GOOGLE_CLOUD_PROJECT="your-gcp-project-id"     # optional; needed for quota routing
+
+# Google Slides — the file ID of your migration deck template
+export SLIDES_TEMPLATE_ID="your_slides_template_file_id"
 ```
 
-Get your Asana token at [app.asana.com/0/developer-console](https://app.asana.com/0/developer-console).
+> **Tip:** `GOOGLE_ACCESS_TOKEN` expires after ~1 hour. Re-run the `gcloud` command above to refresh it before each session, or wrap it in a function in your shell profile.
 
 ---
 
-### 3 — Set up Google ADC (Drive + Slides + Calendar)
-
-```bash
-gcloud auth application-default login \
-  --scopes="https://www.googleapis.com/auth/drive,\
-https://www.googleapis.com/auth/presentations,\
-https://www.googleapis.com/auth/calendar.events,\
-https://www.googleapis.com/auth/cloud-platform"
-```
-
-> If you don't have the `gcloud` CLI, install it from [cloud.google.com/sdk](https://cloud.google.com/sdk/docs/install).
-
----
-
-### 4 — Create a Slack bot and add the token
+### 3 — Create a Slack bot (if using a bot token)
 
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From a manifest**
 2. Select your workspace, then paste this manifest:
@@ -227,33 +216,11 @@ https://www.googleapis.com/auth/cloud-platform"
 ```
 
 3. Click **Next → Create → Install to Workspace → Allow**
-4. Copy the **Bot User OAuth Token** (`xoxb-...`) from **OAuth & Permissions**
-5. Add it to your secrets file:
-
-```bash
-echo 'SLACK_BOT_TOKEN=xoxb-your-token-here' >> ~/.config/secrets/tokens.env
-```
+4. Copy the **Bot User OAuth Token** (`xoxb-...`) from **OAuth & Permissions** and set `SLACK_BOT_TOKEN`
 
 ---
 
-### 5 — Update script paths in SKILL.md
-
-The `SKILL.md` file references absolute paths to the scripts. After cloning, update them to match where you placed the repo:
-
-Open `SKILL.md` and replace every occurrence of:
-```
-/Users/onevocohen/Library/Application Support/Cursor/AgentStores/...
-```
-with the absolute path to the `scripts/` folder inside your cloned repo. For example:
-```
-/Users/yourname/migration-kickoff-toolkit/scripts/fetch_asana.py
-```
-
-You can do this with a single find-and-replace in any editor.
-
----
-
-### 6 — Open the folder in Cursor
+### 4 — Open the folder in Cursor
 
 ```bash
 cursor /path/to/migration-kickoff-toolkit
@@ -263,7 +230,7 @@ Cursor will automatically detect the `SKILL.md` at the root of the project and m
 
 ---
 
-### 7 — Start using it
+### 5 — Start using it
 
 In any Cursor chat in this project, say one of these:
 
