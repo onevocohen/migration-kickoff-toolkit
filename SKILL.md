@@ -68,10 +68,9 @@ Fields Asana **never** fills: `rationale`, `technical_details` (full), `release_
 ```
 PM mentions migration
   → search Asana
-      ↓ exit 0 (task exists): load all Asana data → ask only deck-only gaps → SKIP Step 3
-      ↓ exit 2 (not found):   ask all questions   → Step 3 submits new task
+      ↓ exit 0 (task exists): load all Asana data → create Slack channel immediately (deck_url="TBD") → ask only deck-only gaps → SKIP Step 3 → create deck → create meeting → update Slack channel intro with final deck link
+      ↓ exit 2 (not found):   ask all questions   → Step 3 submits new task → create deck → create meeting → create Slack channel → share all links
       ↓ exit 3 (many matches): ask PM to pick one → re-run fetch with chosen GID
-  → create deck → create meeting → share all links
 ```
 
 ---
@@ -88,11 +87,35 @@ python3 "$SKILL_DIR/scripts/fetch_asana.py" "<migration name>"
 
 | Exit code | Meaning | Action |
 |---|---|---|
-| `0` | **Task already exists** | Load ALL Asana fields into JSON; only ask PM for deck-only fields not stored in Asana (Track A below); **do NOT re-submit — hard-skip Step 3** |
+| `0` | **Task already exists** | Load ALL Asana fields into JSON; **immediately create the Slack channel** (Step 0a below) using the existing data; then ask PM for deck-only fields not stored in Asana (Track A below); **do NOT re-submit — hard-skip Step 3** |
 | `2` | No task found | Ask PM every question in the table (Track B below); proceed to Step 3 to create a new Asana task |
 | `3` | Multiple matches | Ask PM to pick one; re-run `fetch_asana.py` with the chosen GID, then treat as exit 0 or 2 |
 
 > **Rule:** never call `submit_asana.py` when `fetch_asana.py` already returned a task. One migration = one Asana task.
+
+#### Step 0a — Immediately create Slack channel when task already exists (exit 0 only)
+
+Write a minimal JSON to `/tmp/migration_input.json` from the fetched Asana data (fill `slack_additional_members` as `[]`), then run:
+
+```bash
+python3 "$SKILL_DIR/scripts/create_slack_channel.py" /tmp/migration_input.json "<_asana_task_url>" "TBD - deck coming soon"
+```
+
+Save the returned `channel_name` and `channel_url`. Continue to Track A questions. After Step 4 (deck is created), post a follow-up message to the channel with the real deck URL:
+
+```bash
+# After deck URL is known, update the channel with the real deck link
+python3 - <<'EOF'
+import os, json, urllib.request
+token = os.environ["SLACK_USER_TOKEN"]
+channel_id = "<channel_id from Step 0a>"
+deck_url = "<deck_url from Step 4>"
+body = json.dumps({"channel": channel_id, "text": f"📊 Migration deck is ready: {deck_url}"}).encode()
+req = urllib.request.Request("https://slack.com/api/chat.postMessage", data=body,
+    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}, method="POST")
+urllib.request.urlopen(req)
+EOF
+```
 
 **`_asana_*` hints:**
 - `_asana_scale`: `"500+"` / `"100-500"` / `"<100"` — customer scale context
@@ -260,6 +283,7 @@ Creates a **private** Slack channel named `#migration-<normalized-name>`, invite
 > *(30 min · Orit & Yael invited · deck + Asana links in the invite)*
 >
 > 💬 **Slack channel**: [#channel-name] *(private · PM, Orit & Yael invited)*
+> *(Note: if task already existed, channel was created at the start of this session — deck link has been posted there too)*
 
 ---
 
