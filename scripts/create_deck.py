@@ -56,6 +56,42 @@ def copy_template(token):
         print(f"ERROR copying template: {e.code} {e.read().decode()}", file=sys.stderr)
         sys.exit(1)
 
+def move_to_migrations_folder(pres_id, token):
+    """Move the deck into the shared Migrations Drive folder after creation."""
+    MIGRATIONS_FOLDER_ID = "1K97W9ZtZj3iqT0Jio0pY9c3dgRWzuCoR"
+    gcp_project = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
+    headers = {
+        "Authorization":     f"Bearer {token}",
+        "Content-Type":      "application/json",
+    }
+    if gcp_project:
+        headers["X-Goog-User-Project"] = gcp_project
+
+    # Get current parents
+    req = urllib.request.Request(
+        f"https://www.googleapis.com/drive/v3/files/{pres_id}?fields=parents&supportsAllDrives=true",
+        headers=headers
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            current_parents = ",".join(json.loads(resp.read()).get("parents", []))
+    except urllib.error.HTTPError:
+        current_parents = ""
+
+    remove_param = f"&removeParents={current_parents}" if current_parents else ""
+    move_url = (
+        f"https://www.googleapis.com/drive/v3/files/{pres_id}"
+        f"?addParents={MIGRATIONS_FOLDER_ID}{remove_param}"
+        f"&supportsAllDrives=true&fields=id,name"
+    )
+    req = urllib.request.Request(move_url, data=b"{}", method="PATCH", headers=headers)
+    try:
+        with urllib.request.urlopen(req) as resp:
+            print("Deck moved to Migrations folder.", file=sys.stderr)
+    except urllib.error.HTTPError as e:
+        # Non-fatal — deck was created; just couldn't move it
+        print(f"WARNING: could not move deck to Migrations folder: {e.code} {e.read().decode()}", file=sys.stderr)
+
 def batch_update(pres_id, requests, token):
     gcp_project = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
     headers = {
@@ -122,6 +158,7 @@ def main():
     else:
         pres_id = copy_template(token)
         print(f"Copied template: {pres_id}", file=sys.stderr)
+        move_to_migrations_folder(pres_id, token)
 
     migration_name = d.get("migration_name", "Migration")
     pm_name   = d.get("pm_name", "")
